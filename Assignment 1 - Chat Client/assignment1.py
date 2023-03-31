@@ -24,7 +24,6 @@ def receive():
 
 def send(message):
     # send a message to the server
-    # get the length of the message
     message_length = len(message)
     num_bytes_to_send = message_length
 
@@ -53,6 +52,8 @@ def getUsers():
 # connect to the server
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.connect(ADDR)
+client.setblocking(1) 
+client.settimeout(0.5)
 
 while True:
     # connect to the server
@@ -79,30 +80,83 @@ while True:
         print(f"[SUCCESS] Hello {username}, you are ready to chat!")
         break
 
-# get the inputs after successful login
-print("[STARTED] Enter your inputs below...")
-while True:
-    print("[INPUT] Please enter your input: ", end="")
-    user_input = input()
+def sendCommand(command):
+    # send a command to the server
+    command_length = len(command)
+    num_bytes_to_send = command_length
 
-    if user_input == "!quit":
-        # quit the system
-        print(f"[EXIT] Bye bye {username}, see you soon!")
-        client.close()
-        break
-    elif user_input == "!who":
-        # list all the logged-in users
-        user_list = getUsers()
-        print("[USERS] Online users:", sorted(user_list))
-    elif len(user_input) > 0 and user_input[0] == "@":
-        # send a message to an active user
-        target_username = user_input.split()[0][1:]
-        message = user_input[(len(target_username)+2):]
-        send_request = ("SEND " + target_username + " " + message + "\n").encode(FORMAT)
-        result = send(send_request)
-        if result == "SEND-OK":
-            print(f"[{result}] Message sent successfully. Ready for more.")
-        elif result == "BAD-DEST-USER":
-            print(f"[{result}] User {target_username} is not online. Try again.")
-    else:
-        print("[INVALID] Invalid command, please try again!")
+    # send the command until completely sent
+    while num_bytes_to_send > 0:
+        num_bytes_to_send -= client.send(command[command_length-num_bytes_to_send:])
+
+def sendCommands():
+    print("[STARTED] Enter your inputs below...")
+    while True:
+        print("[INPUT] Please enter your input: ", end="")
+        user_input = input()
+        if user_input == "!quit":
+            # close the client, finish
+            print(f"[EXIT] Bye bye {username}, see you again!")
+            client.close()
+            break
+        elif user_input == "!who":
+            # list all online users
+            command = ("LIST\n").encode(FORMAT)
+            sendCommand(command)
+        elif len(user_input) > 0 and user_input[0] == "@":
+            # send a message to an active user
+            target_username = user_input.split()[0][1:]
+            message = user_input[(len(target_username)+2):]
+            send_request = ("SEND " + target_username + " " + message + "\n").encode(FORMAT)
+            sendCommand(send_request)
+        else:
+            print("[INVALID] Invalid command, please try again!")
+            continue
+
+def receiveCommands():
+    buffer = b''
+    received = []
+
+    while True:
+        try:
+            data = client.recv(1)
+            if data == b'\n':
+                # current result is finished
+                processed_buffer = buffer.decode(FORMAT)
+                received.append(processed_buffer)
+                result = processed_buffer.split(" ")
+                print(result[0])
+
+                if result[0] == "LIST-OK":
+                    user_list = []
+                    for user in result[1].split(","):
+                        user_list.append(user)
+                    print("[USERS]", user_list)
+                elif result[0] == "SEND-OK":
+                    print(f"[{result[0]}] Message sent successfully. Ready for more.")
+                elif result == "BAD-DEST-USER":
+                    print(f"[{result[0]}] User is not online. Try again.")
+                elif result[0] == "DELIVERY":
+                    delivered_message = processed_buffer[len(result[0])+len(result[1])+2:]
+                    print(result[1], "sent", delivered_message)
+                else:
+                    print("UNKNOWN")
+
+                buffer = b''
+            else:
+                # add data to buffer
+                buffer += data
+        except:
+            # client is closed, finish
+            break
+
+send_thread = threading.Thread(target=sendCommands)
+send_thread.start()
+
+receive_thread = threading.Thread(target=receiveCommands)
+receive_thread.start()
+
+send_thread.join()
+receive_thread.join()
+
+client.close()
