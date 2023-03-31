@@ -139,6 +139,10 @@ def receiveCommands():
                 elif result[0] == "DELIVERY":
                     delivered_message = processed_buffer[len(result[0])+len(result[1])+2:]
                     print(result[1], "sent", delivered_message)
+                elif result[0] == "BAD-RQST-HDR":
+                    print(f"[{result[0]}] Header error detected. Please retry request.")
+                elif result[0] == "BAD-RQST-BODY":
+                    print(f"[{result[0]}] Body error detected. Please retry request.")
                 else:
                     print("UNKNOWN")
 
